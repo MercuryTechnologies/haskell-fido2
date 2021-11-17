@@ -21,13 +21,15 @@ import qualified Crypto.Fido2.PublicKey as PublicKey
 import Crypto.Hash (Digest, SHA256, digestFromByteString)
 import Data.ASN1.Parse (ParseASN1, getNext, getNextContainerMaybe, hasNext, onNextContainer, onNextContainerMaybe, runParseASN1)
 import Data.ASN1.Types (ASN1 (IntVal, OctetString), ASN1Class (Context), ASN1ConstructionType (Container, Sequence, Set))
+import Data.ASN1.Types.String (asn1CharacterToString)
+import Data.Aeson (ToJSON, object, toJSON, (.=))
 import Data.Bifunctor (first)
 import Data.ByteArray (convert)
 import Data.ByteString (ByteString)
 import Data.HashMap.Strict (HashMap, (!?))
 import Data.List.NonEmpty (NonEmpty ((:|)), toList)
 import qualified Data.List.NonEmpty as NE
-import Data.Maybe (isJust)
+import Data.Maybe (fromMaybe, isJust)
 import Data.Set (Set)
 import qualified Data.Set as Set
 import Data.Text (Text)
@@ -141,6 +143,23 @@ data Statement = Statement
     attExt :: ExtAttestation
   }
   deriving (Eq, Show)
+
+instance ToJSON Statement where
+  toJSON Statement {..} =
+    object
+      [ "alg" .= PublicKey.toCOSEAlgorithmIdentifier pubKey,
+        "sig" .= M.Base16Bytes sig,
+        "x5c" .= NE.map f x5c
+      ]
+    where
+      f :: X509.SignedCertificate -> String
+      f (X509.getCertificate -> X509.Certificate {..}) = "<certificate for " <> fromMaybe "unknown" commonName <> ">"
+        where
+          commonName = X509.getDnElement X509.DnCommonName certSubjectDN >>= asn1CharacterToString
+
+--alg: COSEAlgorithmIdentifier,
+--                  sig: bytes,
+--                  x5c: [ credCert: bytes, * (caCert: bytes) ]
 
 data DecodingError
   = -- | The provided CBOR encoded data was malformed. Either because a field

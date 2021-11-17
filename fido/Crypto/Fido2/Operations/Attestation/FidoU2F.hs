@@ -1,4 +1,5 @@
 {-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE TypeFamilies #-}
 
 module Crypto.Fido2.Operations.Attestation.FidoU2F
@@ -26,6 +27,7 @@ import Crypto.Fido2.PublicKey (PublicKey (ES256PublicKey))
 import Crypto.Number.Serialize (i2osp)
 import qualified Crypto.PubKey.ECC.ECDSA as ECDSA
 import Crypto.PubKey.ECC.Types (CurveName (SEC_p256r1), Point (Point))
+import Data.Aeson (ToJSON, object, toJSON)
 import qualified Data.ByteArray as BA
 import Data.ByteString (ByteString)
 import qualified Data.ByteString as BS
@@ -66,6 +68,11 @@ data Statement = Statement
     attCert :: X509.SignedCertificate
   }
   deriving (Show, Eq)
+
+instance ToJSON Statement where
+  toJSON Statement {} =
+    -- TODO
+    object []
 
 instance M.AttestationStatementFormat Format where
   type AttStmt Format = Statement

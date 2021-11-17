@@ -1,13 +1,19 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE FlexibleContexts #-}
+{-# LANGUAGE FlexibleInstances #-}
 {-# LANGUAGE GADTs #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE NamedFieldPuns #-}
+{-# LANGUAGE RecordWildCards #-}
+{-# LANGUAGE ScopedTypeVariables #-}
 {-# LANGUAGE StandaloneDeriving #-}
 {-# LANGUAGE TypeFamilies #-}
 
 -- |
 -- This module contains the same top-level definitions as 'Crypto.Fido2.Client.JavaScript',
 -- but with the types containing a more Haskell-friendly structure
+--
+-- All the types contain ToJSON instances for pretty-printing
 module Crypto.Fido2.Model
   ( -- * Enumerations
     PublicKeyCredentialType (..),
@@ -67,16 +73,22 @@ module Crypto.Fido2.Model
 
     -- * Reexports
     module Crypto.Fido2.Model.WebauthnType,
+
+    -- * Utility Types
+    Base16Bytes (..),
   )
 where
 
 import qualified Codec.CBOR.Term as CBOR
 import Control.Exception (Exception)
-import Crypto.Fido2.Model.WebauthnType (WebauthnType (Create, Get))
+import Crypto.Fido2.Model.WebauthnType (SWebauthnType (SCreate, SGet), SingI (sing), WebauthnType (Create, Get))
 import Crypto.Fido2.PublicKey (COSEAlgorithmIdentifier, PublicKey)
 import Crypto.Hash (Digest)
 import Crypto.Hash.Algorithms (SHA256)
+import Data.Aeson (ToJSON, Value (String), object, toJSON, (.=))
+import Data.ByteArray (convert)
 import qualified Data.ByteString as BS
+import qualified Data.ByteString.Base16 as Base16
 import Data.HashMap.Strict (HashMap, (!?))
 import qualified Data.HashMap.Strict as HashMap
 import Data.Kind (Type)
@@ -84,10 +96,18 @@ import Data.List.NonEmpty (NonEmpty)
 import Data.Set (Set)
 import Data.String (IsString)
 import Data.Text (Text)
+import qualified Data.Text.Encoding as Text
 import Data.Word (Word32)
 import qualified Data.X509 as X509
+import GHC.Generics (Generic)
 import System.Random.Stateful (Uniform (uniformM), uniformByteStringM)
 import Type.Reflection (Typeable, eqTypeRep, typeOf, type (:~~:) (HRefl))
+
+-- | For pretty-printing to JSON
+newtype Base16Bytes = Base16Bytes BS.ByteString
+
+instance ToJSON Base16Bytes where
+  toJSON (Base16Bytes bytes) = String $ Text.decodeUtf8 (Base16.encode bytes)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#enumdef-publickeycredentialtype)
 -- This enumeration defines the valid credential types. It is an extension point;
@@ -96,6 +116,9 @@ import Type.Reflection (Typeable, eqTypeRep, typeOf, type (:~~:) (HRefl))
 -- and attestation structures according to the type of the authenticator.
 data PublicKeyCredentialType = PublicKeyCredentialTypePublicKey
   deriving (Eq, Show, Bounded, Enum, Ord)
+
+instance ToJSON PublicKeyCredentialType where
+  toJSON PublicKeyCredentialTypePublicKey = "public-key"
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#enum-transport)
 -- [Authenticators](https://www.w3.org/TR/webauthn-2/#authenticator) may implement
@@ -126,7 +149,13 @@ data AuthenticatorTransport
     -- transport, i.e., it is a [platform authenticator](https://www.w3.org/TR/webauthn-2/#platform-authenticators).
     -- These authenticators are not removable from the [client device](https://www.w3.org/TR/webauthn-2/#client-device).
     AuthenticatorTransportInternal
-  deriving (Eq, Show, Bounded, Enum, Ord)
+  deriving (Eq, Show, Bounded, Enum, Ord, Generic)
+
+instance ToJSON AuthenticatorTransport where
+  toJSON AuthenticatorTransportUSB = "USB"
+  toJSON AuthenticatorTransportNFC = "NFC"
+  toJSON AuthenticatorTransportBLE = "BLE"
+  toJSON AuthenticatorTransportInternal = "Internal"
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#enumdef-authenticatorattachment)
 -- This enumeration’s values describe [authenticators](https://www.w3.org/TR/webauthn-2/#authenticator)'
@@ -143,6 +172,10 @@ data AuthenticatorAttachment
     -- This value indicates [cross-platform attachment](https://www.w3.org/TR/webauthn-2/#cross-platform-attachment).
     AuthenticatorAttachmentCrossPlatform
   deriving (Eq, Show, Bounded, Enum, Ord)
+
+instance ToJSON AuthenticatorAttachment where
+  toJSON AuthenticatorAttachmentPlatform = "Platform"
+  toJSON AuthenticatorAttachmentCrossPlatform = "CrossPlatform"
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#enumdef-residentkeyrequirement)
 -- This enumeration’s values describe the [Relying Party](https://www.w3.org/TR/webauthn-2/#relying-party)'s
@@ -171,6 +204,11 @@ data ResidentKeyRequirement
     ResidentKeyRequirementRequired
   deriving (Eq, Show, Bounded, Enum, Ord)
 
+instance ToJSON ResidentKeyRequirement where
+  toJSON ResidentKeyRequirementDiscouraged = "Discouraged"
+  toJSON ResidentKeyRequirementPreferred = "Preferred"
+  toJSON ResidentKeyRequirementRequired = "Required"
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#enum-userVerificationRequirement)
 -- A [WebAuthn Relying Party](https://www.w3.org/TR/webauthn-2/#webauthn-relying-party) may
 -- require [user verification](https://www.w3.org/TR/webauthn-2/#user-verification) for some
@@ -194,6 +232,11 @@ data UserVerificationRequirement
     -- during the operation (e.g., in the interest of minimizing disruption to the user interaction flow).
     UserVerificationRequirementDiscouraged
   deriving (Eq, Show, Bounded, Enum, Ord)
+
+instance ToJSON UserVerificationRequirement where
+  toJSON UserVerificationRequirementRequired = "Required"
+  toJSON UserVerificationRequirementPreferred = "Preferred"
+  toJSON UserVerificationRequirementDiscouraged = "Discouraged"
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#enum-attestation-convey)
 -- [WebAuthn Relying Parties](https://www.w3.org/TR/webauthn-2/#webauthn-relying-party) may use
@@ -247,6 +290,12 @@ data AttestationConveyancePreference
     -- to the [Relying Party](https://www.w3.org/TR/webauthn-2/#relying-party).
     AttestationConveyancePreferenceEnterprise
   deriving (Eq, Show, Bounded, Enum, Ord)
+
+instance ToJSON AttestationConveyancePreference where
+  toJSON AttestationConveyancePreferenceNone = "None"
+  toJSON AttestationConveyancePreferenceIndirect = "Indirect"
+  toJSON AttestationConveyancePreferenceDirect = "Direct"
+  toJSON AttestationConveyancePreferenceEnterprise = "Enterprise"
 
 type NonEmptyCertificateChain = NonEmpty X509.SignedCertificate
 
@@ -324,6 +373,7 @@ data AttestationType
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#aaguid)
 newtype AAGUID = AAGUID {unAAGUID :: BS.ByteString}
   deriving (Eq, Show)
+  deriving (ToJSON) via Base16Bytes
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#rp-id)
 -- A [valid domain string](https://url.spec.whatwg.org/#valid-domain-string)
@@ -347,7 +397,7 @@ newtype AAGUID = AAGUID {unAAGUID :: BS.ByteString}
 -- uses DOMString, while the latter uses USVString. Is this a bug in the spec or is there an actual difference?
 newtype RpId = RpId {unRpId :: Text}
   deriving (Eq, Show, Ord)
-  deriving newtype (IsString)
+  deriving newtype (IsString, ToJSON)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dom-publickeycredentialentity-name)
 -- A [human-palatable](https://www.w3.org/TR/webauthn-2/#human-palatability)
@@ -363,7 +413,7 @@ newtype RpId = RpId {unRpId :: Text}
 -- about how this metadata is encoded.
 newtype RelyingPartyName = RelyingPartyName {unRelyingPartyName :: Text}
   deriving (Eq, Show)
-  deriving newtype (IsString)
+  deriving newtype (IsString, ToJSON)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#user-handle)
 -- The user handle is specified by a [Relying Party](https://www.w3.org/TR/webauthn-2/#relying-party),
@@ -376,6 +426,7 @@ newtype RelyingPartyName = RelyingPartyName {unRelyingPartyName :: Text}
 -- with a maximum size of 64 bytes, and is not meant to be displayed to the user.
 newtype UserHandle = UserHandle {unUserHandle :: BS.ByteString}
   deriving (Eq, Show, Ord)
+  deriving (ToJSON) via Base16Bytes
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#user-handle)
 -- A user handle is an opaque [byte sequence](https://infra.spec.whatwg.org/#byte-sequence)
@@ -397,7 +448,7 @@ instance Uniform UserHandle where
 -- about how this metadata is encoded.
 newtype UserAccountDisplayName = UserAccountDisplayName {unUserAccountDisplayName :: Text}
   deriving (Eq, Show)
-  deriving newtype (IsString)
+  deriving newtype (IsString, ToJSON)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dom-publickeycredentialentity-name)
 -- A [human-palatable](https://www.w3.org/TR/webauthn-2/#human-palatability) identifier for a user account.
@@ -416,7 +467,7 @@ newtype UserAccountDisplayName = UserAccountDisplayName {unUserAccountDisplayNam
 --   about how this metadata is encoded.
 newtype UserAccountName = UserAccountName {unUserAccountName :: Text}
   deriving (Eq, Show)
-  deriving newtype (IsString)
+  deriving newtype (IsString, ToJSON)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#credential-id)
 -- A probabilistically-unique [byte sequence](https://infra.spec.whatwg.org/#byte-sequence)
@@ -424,6 +475,7 @@ newtype UserAccountName = UserAccountName {unUserAccountName :: Text}
 -- source and its [authentication assertions](https://www.w3.org/TR/webauthn-2/#authentication-assertion).
 newtype CredentialId = CredentialId {unCredentialId :: BS.ByteString}
   deriving (Eq, Show, Ord)
+  deriving (ToJSON) via Base16Bytes
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#sctn-cryptographic-challenges)
 -- This member contains a challenge intended to be used for generating the newly
@@ -431,6 +483,7 @@ newtype CredentialId = CredentialId {unCredentialId :: BS.ByteString}
 -- security consideration.
 newtype Challenge = Challenge {unChallenge :: BS.ByteString}
   deriving (Eq, Show)
+  deriving (ToJSON) via Base16Bytes
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#sctn-cryptographic-challenges)
 -- In order to prevent replay attacks, the challenges MUST contain enough entropy
@@ -443,6 +496,7 @@ instance Uniform Challenge where
 -- This is treated as a hint, and MAY be overridden by the [client](https://www.w3.org/TR/webauthn-2/#client).
 newtype Timeout = Timeout {unTimeout :: Word32}
   deriving (Eq, Show)
+  deriving newtype (ToJSON)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#assertion-signature)
 -- An assertion signature is produced when the
@@ -464,6 +518,7 @@ newtype Timeout = Timeout {unTimeout :: Word32}
 -- format is illustrated in [Figure 4, below](https://www.w3.org/TR/webauthn-2/#fig-signature).
 newtype AssertionSignature = AssertionSignature {unAssertionSignature :: BS.ByteString}
   deriving (Eq, Show)
+  deriving (ToJSON) via Base16Bytes
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#rpidhash)
 -- SHA-256 hash of the [RP ID](https://www.w3.org/TR/webauthn-2/#rp-id) the
@@ -471,6 +526,9 @@ newtype AssertionSignature = AssertionSignature {unAssertionSignature :: BS.Byte
 -- [scoped](https://www.w3.org/TR/webauthn-2/#scope) to.
 newtype RpIdHash = RpIdHash {unRpIdHash :: Digest SHA256}
   deriving (Eq, Show)
+
+instance ToJSON RpIdHash where
+  toJSON = toJSON . Base16Bytes . convert . unRpIdHash
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#collectedclientdata-hash-of-the-serialized-client-data)
 -- This is the hash (computed using SHA-256) of the [JSON-compatible serialization of client data](https://www.w3.org/TR/webauthn-2/#collectedclientdata-json-compatible-serialization-of-client-data),
@@ -481,17 +539,18 @@ newtype ClientDataHash = ClientDataHash {unClientDataHash :: Digest SHA256}
 -- | [(spec)](https://html.spec.whatwg.org/multipage/origin.html#concept-origin)
 newtype Origin = Origin {unOrigin :: Text}
   deriving (Eq, Show)
-  deriving newtype (IsString)
+  deriving newtype (IsString, ToJSON)
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#signcount)
 -- [Signature counter](https://www.w3.org/TR/webauthn-2/#signature-counter)
 newtype SignatureCounter = SignatureCounter {unSignatureCounter :: Word32}
   deriving (Eq, Show)
-  deriving newtype (Num, Ord)
+  deriving newtype (Num, Ord, ToJSON)
 
 -- | The encoding of a 'PublicKey'
 newtype PublicKeyBytes = PublicKeyBytes {unPublicKeyBytes :: BS.ByteString}
   deriving (Eq, Show)
+  deriving (ToJSON) via Base16Bytes
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#iface-authentication-extensions-client-inputs)
 -- This is a dictionary containing the [client extension input](https://www.w3.org/TR/webauthn-2/#client-extension-input)
@@ -502,6 +561,9 @@ data AuthenticationExtensionsClientInputs = AuthenticationExtensionsClientInputs
   }
   deriving (Eq, Show)
 
+instance ToJSON AuthenticationExtensionsClientInputs where
+  toJSON _ = object []
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#iface-authentication-extensions-client-outputs)
 -- This is a dictionary containing the [client extension output](https://www.w3.org/TR/webauthn-2/#client-extension-output)
 -- values for zero or more [WebAuthn Extensions](https://www.w3.org/TR/webauthn-2/#webauthn-extensions).
@@ -511,11 +573,17 @@ data AuthenticationExtensionsClientOutputs = AuthenticationExtensionsClientOutpu
   }
   deriving (Eq, Show)
 
+instance ToJSON AuthenticationExtensionsClientOutputs where
+  toJSON _ = object []
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#authenticator-extension-output)
 data AuthenticatorExtensionOutputs = AuthenticatorExtensionOutputs
   {
   }
   deriving (Eq, Show)
+
+instance ToJSON AuthenticatorExtensionOutputs where
+  toJSON _ = object []
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictionary-rp-credential-params)
 -- The 'PublicKeyCredentialRpEntity' dictionary is used to supply additional
@@ -532,6 +600,13 @@ data PublicKeyCredentialRpEntity = PublicKeyCredentialRpEntity
     pkcreName :: RelyingPartyName
   }
   deriving (Eq, Show)
+
+instance ToJSON PublicKeyCredentialRpEntity where
+  toJSON PublicKeyCredentialRpEntity {..} =
+    object
+      [ "id" .= toJSON pkcreId,
+        "name" .= toJSON pkcreName
+      ]
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictionary-user-credential-params)
 -- The 'PublicKeyCredentialUserEntity' dictionary is used to supply additional
@@ -560,6 +635,14 @@ data PublicKeyCredentialUserEntity = PublicKeyCredentialUserEntity
   }
   deriving (Eq, Show)
 
+instance ToJSON PublicKeyCredentialUserEntity where
+  toJSON PublicKeyCredentialUserEntity {..} =
+    object
+      [ "id" .= toJSON pkcueId,
+        "displayName" .= toJSON pkcueDisplayName,
+        "name" .= toJSON pkcueName
+      ]
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictionary-credential-params)
 -- This dictionary is used to supply additional parameters when creating a new credential.
 data PublicKeyCredentialParameters = PublicKeyCredentialParameters
@@ -573,6 +656,13 @@ data PublicKeyCredentialParameters = PublicKeyCredentialParameters
     pkcpAlg :: COSEAlgorithmIdentifier
   }
   deriving (Eq, Show)
+
+instance ToJSON PublicKeyCredentialParameters where
+  toJSON PublicKeyCredentialParameters {..} =
+    object
+      [ "type" .= toJSON pkcpTyp,
+        "alg" .= toJSON pkcpAlg
+      ]
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictdef-publickeycredentialdescriptor)
 -- This dictionary contains the attributes that are specified by a caller when referring to a
@@ -596,6 +686,14 @@ data PublicKeyCredentialDescriptor = PublicKeyCredentialDescriptor
     pkcdTransports :: Maybe [AuthenticatorTransport]
   }
   deriving (Eq, Show)
+
+instance ToJSON PublicKeyCredentialDescriptor where
+  toJSON PublicKeyCredentialDescriptor {..} =
+    object
+      [ "type" .= toJSON pkcdTyp,
+        "id" .= toJSON pkcdId,
+        "transports" .= toJSON pkcdTransports
+      ]
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictdef-authenticatorselectioncriteria)
 -- [WebAuthn Relying Parties](https://www.w3.org/TR/webauthn-2/#webauthn-relying-party)
@@ -624,6 +722,14 @@ data AuthenticatorSelectionCriteria = AuthenticatorSelectionCriteria
   }
   deriving (Eq, Show)
 
+instance ToJSON AuthenticatorSelectionCriteria where
+  toJSON AuthenticatorSelectionCriteria {..} =
+    object
+      [ "authenticatorAttachment" .= toJSON ascAuthenticatorAttachment,
+        "residentKey" .= toJSON ascResidentKey,
+        "userVerification" .= toJSON ascUserVerification
+      ]
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#flags)
 data AuthenticatorDataFlags = AuthenticatorDataFlags
   { -- | [(spec)](https://www.w3.org/TR/webauthn-2/#concept-user-present)
@@ -636,6 +742,13 @@ data AuthenticatorDataFlags = AuthenticatorDataFlags
     adfUserVerified :: Bool
   }
   deriving (Eq, Show)
+
+instance ToJSON AuthenticatorDataFlags where
+  toJSON AuthenticatorDataFlags {..} =
+    object
+      [ "userPresent" .= toJSON adfUserPresent,
+        "userVerified" .= toJSON adfUserVerified
+      ]
 
 data PublicKeyCredentialOptions (t :: WebauthnType) where
   -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictionary-makecredentialoptions)
@@ -730,6 +843,31 @@ deriving instance Eq (PublicKeyCredentialOptions t)
 
 deriving instance Show (PublicKeyCredentialOptions t)
 
+instance ToJSON (PublicKeyCredentialOptions 'Create) where
+  toJSON PublicKeyCredentialCreationOptions {..} =
+    object
+      [ "rp" .= toJSON pkcocRp,
+        "user" .= toJSON pkcocUser,
+        "challenge" .= toJSON pkcocChallenge,
+        "pubKeyCredParams" .= toJSON pkcocPubKeyCredParams,
+        "timeout" .= toJSON pkcocTimeout,
+        "excludeCredentials" .= toJSON pkcocExcludeCredentials,
+        "authenticatorSelection" .= toJSON pkcocAuthenticatorSelection,
+        "attestation" .= toJSON pkcocAttestation,
+        "extensions" .= toJSON pkcocExtensions
+      ]
+
+instance ToJSON (PublicKeyCredentialOptions 'Get) where
+  toJSON PublicKeyCredentialRequestOptions {..} =
+    object
+      [ "challenge" .= toJSON pkcogChallenge,
+        "timeout" .= toJSON pkcogTimeout,
+        "rpId" .= toJSON pkcogRpId,
+        "allowCredentials" .= toJSON pkcogAllowCredentials,
+        "userVerification" .= toJSON pkcogUserVerification,
+        "extensions" .= toJSON pkcogExtensions
+      ]
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#dictionary-client-data)
 -- The client data represents the contextual bindings of both the
 -- [WebAuthn Relying Party](https://www.w3.org/TR/webauthn-2/#webauthn-relying-party)
@@ -756,6 +894,20 @@ data CollectedClientData (t :: WebauthnType) = CollectedClientData
     -- tokenBinding :: Maybe TokenBinding,
   }
   deriving (Eq, Show)
+
+instance SingI t => ToJSON (CollectedClientData t) where
+  toJSON CollectedClientData {..} =
+    object
+      [ "type"
+          .= String
+            ( case sing @t of
+                SCreate -> "webauthn.create"
+                SGet -> "webauthn.get"
+            ),
+        "challenge" .= toJSON ccdChallenge,
+        "origin" .= toJSON ccdOrigin,
+        "crossOrigin" .= toJSON ccdCrossOrigin
+      ]
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#sctn-attested-credential-data)
 -- Attested credential data is a variable-length byte array added to the
@@ -814,14 +966,41 @@ data AuthenticatorData (t :: WebauthnType) = AuthenticatorData
     -- | Raw encoded data for verification purposes
     adRawData :: BS.ByteString
   }
-  deriving (Eq, Show)
+  deriving (Eq, Show, Generic)
+
+instance SingI t => ToJSON (AuthenticatorData t) where
+  toJSON AuthenticatorData {..} =
+    object
+      ( [ "rpIdHash" .= toJSON adRpIdHash,
+          "flags" .= toJSON adFlags,
+          "signCount" .= toJSON adSignCount,
+          "extensions" .= toJSON adExtensions
+        ]
+          ++ case sing @t of
+            SCreate ->
+              [ "attestedCredentialData"
+                  .= object
+                    [ "aaguid" .= toJSON (acdAaguid adAttestedCredentialData),
+                      "credentialId" .= toJSON (acdCredentialId adAttestedCredentialData),
+                      "credentialPublicKey" .= toJSON (acdCredentialPublicKeyBytes adAttestedCredentialData)
+                    ]
+              ]
+            SGet -> []
+      )
 
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#sctn-attestation-formats)
 -- This class is used to specify an [attestation statement format](https://www.w3.org/TR/webauthn-2/#attestation-statement-format)'s
 -- [identifier](https://www.w3.org/TR/webauthn-2/#sctn-attstn-fmt-ids)
 -- and [attestation statement structure](https://www.w3.org/TR/webauthn-2/#attestation-statement)
 class
-  (Eq (AttStmt a), Show (AttStmt a), Typeable a, Show a, Exception (AttStmtDecodingError a), Exception (AttStmtVerificationError a)) =>
+  ( Eq (AttStmt a),
+    Show (AttStmt a),
+    ToJSON (AttStmt a),
+    Typeable a,
+    Show a,
+    Exception (AttStmtDecodingError a),
+    Exception (AttStmtVerificationError a)
+  ) =>
   AttestationStatementFormat a
   where
   -- | The type of a fully-decoded and structurally valid attestation statement
@@ -948,6 +1127,14 @@ instance Eq AttestationObject where
 
 deriving instance Show AttestationObject
 
+instance ToJSON AttestationObject where
+  toJSON AttestationObject {aoAuthData, aoFmt, aoAttStmt} =
+    object
+      [ "authData" .= toJSON aoAuthData,
+        "fmt" .= String (asfIdentifier aoFmt),
+        "attStmt" .= toJSON aoAttStmt
+      ]
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#authenticatorresponse)
 -- [Authenticators](https://www.w3.org/TR/webauthn-2/#authenticator) respond to
 -- [Relying Party](https://www.w3.org/TR/webauthn-2/#relying-party) requests by
@@ -1040,6 +1227,22 @@ deriving instance Eq (AuthenticatorResponse t)
 
 deriving instance Show (AuthenticatorResponse t)
 
+instance SingI t => ToJSON (AuthenticatorResponse t) where
+  toJSON = case sing @t of
+    SCreate -> \AuthenticatorAttestationResponse {..} ->
+      object
+        [ "clientData" .= toJSON arcClientData,
+          "attestationObject" .= toJSON arcAttestationObject,
+          "transports" .= toJSON arcTransports
+        ]
+    SGet -> \AuthenticatorAssertionResponse {..} ->
+      object
+        [ "clientData" .= toJSON argClientData,
+          "authenticatorData" .= toJSON argAuthenticatorData,
+          "signature" .= toJSON argSignature,
+          "userHandle" .= toJSON argUserHandle
+        ]
+
 -- | [(spec)](https://www.w3.org/TR/webauthn-2/#iface-pkcredential)
 -- The 'PublicKeyCredential' interface contains the attributes that are returned to the caller when a new credential is created, or a new assertion is requested.
 data PublicKeyCredential (t :: WebauthnType) = PublicKeyCredential
@@ -1072,3 +1275,11 @@ data PublicKeyCredential (t :: WebauthnType) = PublicKeyCredential
 deriving instance Eq (PublicKeyCredential t)
 
 deriving instance Show (PublicKeyCredential t)
+
+instance SingI t => ToJSON (PublicKeyCredential t) where
+  toJSON PublicKeyCredential {..} =
+    object
+      [ "identifier" .= toJSON pkcIdentifier,
+        "response" .= toJSON pkcResponse,
+        "clientExtensionResults" .= toJSON pkcClientExtensionResults
+      ]

@@ -1,0 +1,58 @@
+{
+    "pubKeyCredParams": [
+        {
+            "type": "public-key",
+            "alg": "ES256"
+        }
+    ],
+    "user": {
+        "id": "0b973faeee91921fc4335910ce058eb7363aeb41b686fc20cf3c53a5749cfac66d486da42c1af59491e411e9694a7658faaef482247448e960b72769c20249a9",
+        "name": "aeuaoeu",
+        "displayName": "aoeuao"
+    },
+    "attestation": "Direct",
+    "excludeCredentials": [],
+    "challenge": "b608956100000000c218ae8c3468a6d96b9c8637dd84f2d3",
+    "timeout": null,
+    "authenticatorSelection": {
+        "authenticatorAttachment": null,
+        "residentKey": "Discouraged",
+        "userVerification": "Preferred"
+    },
+    "extensions": null,
+    "rp": {
+        "id": null,
+        "name": "ACME"
+    }
+}
+{
+    "response": {
+        "clientData": {
+            "origin": "https://infinisil.webauthn.dev.tweag.io",
+            "challenge": "b608956100000000c218ae8c3468a6d96b9c8637dd84f2d3",
+            "type": "webauthn.create",
+            "crossOrigin": null
+        },
+        "attestationObject": {
+            "attStmt": {},
+            "authData": {
+                "attestedCredentialData": {
+                    "aaguid": "00000000000000000000000000000000",
+                    "credentialPublicKey": "a5010203262001215820cf3a8213c7f7dfccb23b1c02b825b89e51b67aed4067f17ae9695f804f726eea2258205fd388306edc7de26ad4a18517306c27bb7a853ce080637fa873f5eb84cd297f",
+                    "credentialId": "b3c011f1bc55d4487521f611821d87cda1ca8ad2a71377da7719dbb6132d1f372e2f7227a1158c53928b354b89bba12e6c03d5288e09355dcc44ef6016536d4a"
+                },
+                "extensions": null,
+                "flags": {
+                    "userVerified": false,
+                    "userPresent": true
+                },
+                "signCount": 0,
+                "rpIdHash": "7cdb803f9d5988898c4bbad5d1b887ee160def0dbc71aa45bec708459e51f47c"
+            },
+            "fmt": "fido-u2f"
+        },
+        "transports": []
+    },
+    "identifier": "b3c011f1bc55d4487521f611821d87cda1ca8ad2a71377da7719dbb6132d1f372e2f7227a1158c53928b354b89bba12e6c03d5288e09355dcc44ef6016536d4a",
+    "clientExtensionResults": {}
+}

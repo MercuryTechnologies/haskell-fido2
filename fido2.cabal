@@ -36,6 +36,7 @@ library
     asn1-parse,
     asn1-types,
     bytestring,
+    base16-bytestring,
     base64-bytestring,
     containers,
     cryptonite,
@@ -86,6 +87,7 @@ executable server
 
   build-depends:
     aeson,
+    aeson-pretty,
     base64-bytestring,
     binary,
     cborg,

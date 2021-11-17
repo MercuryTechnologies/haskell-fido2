@@ -20,6 +20,7 @@ import Crypto.Fido2.Operations.Common (CredentialEntry (CredentialEntry, ceCrede
 import Crypto.Fido2.PublicKey (COSEAlgorithmIdentifier (COSEAlgorithmIdentifierES256))
 import Crypto.Hash (hash)
 import Data.Aeson (FromJSON)
+import Data.Aeson.Encode.Pretty (encodePretty)
 import qualified Data.ByteString.Base64.URL as Base64
 import qualified Data.ByteString.Builder as Builder
 import qualified Data.ByteString.Lazy as LBS
@@ -171,7 +172,7 @@ beginRegistration db pending = do
             M.pkcueName = M.UserAccountName userName
           }
   options <- liftIO $ insertPendingOptions pending $ defaultPkcco user
-  liftIO $ putStrLn $ "/register/begin, sending " <> show options
+  liftIO $ putStrLn $ "/register/begin, sending " <> LText.unpack (LText.decodeUtf8 (encodePretty options))
   liftIO $
     Database.withTransaction db $ \tx -> do
       Database.addUser tx user
@@ -183,7 +184,7 @@ completeRegistration origin rpIdHash db pending = do
   cred <- case decodeCreatedPublicKeyCredential allSupportedFormats credential of
     Left err -> fail $ show err
     Right result -> pure result
-  liftIO $ putStrLn $ "/register/complete, received " <> show cred
+  liftIO $ putStrLn $ "/register/complete, received " <> LText.unpack (LText.decodeUtf8 (encodePretty cred))
 
   options <-
     liftIO (getPendingOptions pending cred) >>= \case

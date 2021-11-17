@@ -23,6 +23,7 @@ import Data.ASN1.Encoding (ASN1Decoding (decodeASN1))
 import Data.ASN1.Error (ASN1Error)
 import qualified Data.ASN1.OID as OID
 import Data.ASN1.Prim (ASN1 (OctetString))
+import Data.Aeson (ToJSON, toJSON)
 import Data.Bifunctor (first)
 import Data.ByteArray (convert)
 import qualified Data.ByteString as BS
@@ -49,6 +50,9 @@ data Statement = Statement
     x5c :: Maybe M.NonEmptyCertificateChain
   }
   deriving (Eq, Show)
+
+instance ToJSON Statement where
+  toJSON = undefined
 
 data DecodingError
   = -- | The provided CBOR encoded data was malformed. Either because a field

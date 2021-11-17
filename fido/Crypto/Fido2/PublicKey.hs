@@ -36,6 +36,7 @@ import qualified Crypto.PubKey.Ed25519 as Ed25519
 import qualified Data.ASN1.BinaryEncoding as ASN1
 import qualified Data.ASN1.Encoding as ASN1
 import qualified Data.ASN1.Prim as ASN1
+import Data.Aeson (ToJSON, toJSON)
 import qualified Data.ByteArray as ByteArray
 import Data.ByteString (ByteString)
 import qualified Data.X509 as X509
@@ -52,6 +53,12 @@ data COSEAlgorithmIdentifier
   | COSEAlgorithmIdentifierES512
   | COSEAlgorithmIdentifierEdDSA
   deriving (Eq, Show, Bounded, Enum, Ord)
+
+instance ToJSON COSEAlgorithmIdentifier where
+  toJSON COSEAlgorithmIdentifierES256 = "ES256"
+  toJSON COSEAlgorithmIdentifierES384 = "ES384"
+  toJSON COSEAlgorithmIdentifierES512 = "ES512"
+  toJSON COSEAlgorithmIdentifierEdDSA = "EdDSA"
 
 data PublicKey
   = ES256PublicKey ECDSA.PublicKey
