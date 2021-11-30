@@ -152,6 +152,21 @@ main = Hspec.hspec $ do
                   (defaultPublicKeyCredentialCreationOptions pkCredential)
                   pkCredential
         registerResult `shouldSatisfy` isRight
+  describe "TPM register" $
+    it "tests whether the fixed TPM-SHA256 register has a valid attestation" $
+      do
+        pkCredential <-
+          either (error . show) id . JS.decodeCreatedPublicKeyCredential Fido2.allSupportedFormats
+            <$> decodeFile
+              "tests/responses/attestation/06-tpm-sha256.json"
+        let registerResult = do
+              toEither $
+                Fido2.verifyAttestationResponse
+                  (M.Origin "https://localhost:44329")
+                  (rpIdHash "localhost")
+                  (defaultPublicKeyCredentialCreationOptions pkCredential)
+                  pkCredential
+        registerResult `shouldSatisfy` isRight
 
 {- Disabled because we can't yet reproduce a login response for the register-complete/02.json
   let (Right Fido2.AttestedCredentialData {credentialId, credentialPublicKey}) = registerResult
